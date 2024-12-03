@@ -1,0 +1,5 @@
+Flask
+Faker
+pyautogui
+psutil
+pyperclip
