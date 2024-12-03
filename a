@@ -1,0 +1,89 @@
+import pyautogui
+import time
+import os
+import tempfile
+import imaplib
+import email
+from email import policy
+from email.parser import BytesParser
+
+def ler_resultados_arquivo(caminho_arquivo):
+    if not os.path.exists(caminho_arquivo):
+        return []
+    with open(caminho_arquivo, "r") as f:
+        resultados = [linha.strip().split(", ") for linha in f.readlines()]
+    return [(r[2].split(": ")[1], r[3].split(": ")[1], r[4].split(": ")[1]) for r in resultados if len(r) > 9]  # Retornar nick, email, e senha
+
+def abrir_browser(instancia):
+    user_data_dir = os.path.join(tempfile.gettempdir(), f"edgeprofile{instancia}")
+    os.makedirs(user_data_dir, exist_ok=True)
+    pyautogui.hotkey('win', 'r')
+    pyautogui.write(f'msedge --user-data-dir="{user_data_dir}" --inprivate')
+    pyautogui.press('enter')
+    time.sleep(5)
+
+def acessar_email_principal(email_principal, senha_principal):
+    mail = imaplib.IMAP4_SSL('imap.gmail.com')
+    mail.login(email_principal, senha_principal)
+    mail.select('inbox')
+
+    status, data = mail.search(None, 'UNSEEN')
+    mail_ids = data[0].split()
+
+    codigos_verificacao = {}
+
+    for mail_id in mail_ids:
+        status, data = mail.fetch(mail_id, '(RFC822)')
+        raw_email = data[0][1]
+        msg = BytesParser(policy=policy.default).parsebytes(raw_email)
+
+        if 'Twitch' in msg['from']:
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    body = part.get_payload(decode=True).decode('utf-8')
+                    for line in body.split('\n'):
+                        if 'código' in line:  # Ajuste conforme necessário para seu email específico
+                            email_destino = line.split(' ')[-1]  # Supondo que o email destino esteja na última palavra da linha
+                            codigo = ''.join(filter(str.isdigit, line))
+                            codigos_verificacao[email_destino] = codigo
+                            break
+    return codigos_verificacao
+
+def logar_na_conta(nick, email, senha, instancia, codigos_verificacao):
+    abrir_browser(instancia)
+    pyautogui.write('https://www.twitch.tv/login')
+    pyautogui.press('enter')
+    time.sleep(5)
+    
+    pyautogui.click(x=889, y=189)  # Ajuste as coordenadas conforme necessário
+    pyautogui.write(email)
+    pyautogui.press('tab')
+    pyautogui.write(senha)
+    pyautogui.press('tab')
+    pyautogui.press('tab')
+    time.sleep(5)
+    pyautogui.press('enter')
+    time.sleep(5)
+
+    if email in codigos_verificacao:
+        codigo_verificacao = codigos_verificacao[email]
+        pyautogui.write(codigo_verificacao)
+        pyautogui.press('enter')
+        print(f"Login realizado para a conta {nick}")
+        time.sleep(5)
+    else:
+        print(f"Não foi possível encontrar o código de verificação para a conta {nick}")
+
+# Credenciais da conta principal
+email_principal = 'bruno2004antonio@gmail.com'
+senha_principal = 'brunotg2004'
+
+# Ler resultados anteriores
+resultados_aprovados = ler_resultados_arquivo("resultados_criacao_contas.txt")
+
+# Acessar emails da conta principal para obter códigos de verificação
+codigos_verificacao = acessar_email_principal(email_principal, senha_principal)
+
+# Logar em cada conta aprovada com instância diferente
+for i, (nick, email, senha) in enumerate(resultados_aprovados):
+    logar_na_conta(nick, email, senha, i, codigos_verificacao)
